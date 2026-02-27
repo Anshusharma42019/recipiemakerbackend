@@ -7,6 +7,11 @@ const recipeSchema = new mongoose.Schema({
     quantity: { type: Number, required: true },
     unit: { type: String, required: true }
   }],
+  rawMaterials: [{
+    rawMaterialId: { type: mongoose.Schema.Types.ObjectId, ref: 'RawMaterial' },
+    quantity: { type: Number, required: true },
+    unit: { type: String, required: true }
+  }],
   instructions: String,
   cookTime: Number,
   servings: Number,
