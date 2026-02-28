@@ -12,6 +12,15 @@ exports.getOne = async (req, res) => {
 };
 
 exports.create = async (req, res) => {
+  const { ingredients } = req.body;
+  
+  for (const ing of ingredients) {
+    const item = await Inventory.findById(ing.inventoryId);
+    if (!item || item.quantity < ing.quantity) {
+      return res.status(400).json({ message: `${item?.name || 'Item'} is out of stock` });
+    }
+  }
+  
   const item = await RawMaterial.create({ ...req.body, userId: req.user.userId });
   const populated = await RawMaterial.findById(item._id).populate('ingredients.inventoryId');
   res.status(201).json(populated);
