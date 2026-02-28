@@ -7,7 +7,9 @@ const app = express();
 
 const allowedOrigins = [
   "http://localhost:5173",
-  "http://localhost:5000"
+  "http://localhost:5000",
+  "https://recipiemakerfrontend.vercel.app",
+  "https://recipiemakerfrontend-iy4o.vercel.app"
 ];
 app.use(
   cors({
