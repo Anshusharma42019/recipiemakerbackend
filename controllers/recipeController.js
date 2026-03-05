@@ -50,6 +50,10 @@ exports.cook = async (req, res) => {
       });
     }
 
+    // Update recipe status to cooking
+    recipe.status = 'cooking';
+    await recipe.save();
+
     res.json({ message: 'Recipe cooked successfully', recipe });
   } catch (error) {
     res.status(500).json({ error: error.message });
