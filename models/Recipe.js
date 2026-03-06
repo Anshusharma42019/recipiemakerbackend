@@ -15,9 +15,11 @@ const recipeSchema = new mongoose.Schema({
   instructions: String,
   cookTime: Number,
   servings: Number,
+  sellingPrice: { type: Number, default: 0 },
   quantity: { type: Number, default: 1 },
   status: { type: String, enum: ['cooking', 'cooked', 'cancelled'], default: 'cooking' },
   restockedIngredients: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Inventory' }],
+  isActive: { type: Boolean, default: true },
   userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }
 }, { timestamps: true });
 

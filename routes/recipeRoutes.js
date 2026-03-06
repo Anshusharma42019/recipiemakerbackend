@@ -7,6 +7,8 @@ router.get('/', recipeController.getAll);
 router.get('/:id', recipeController.getOne);
 router.post('/', auth, recipeController.create);
 router.put('/:id', auth, recipeController.update);
+router.patch('/:id/toggle-status', auth, recipeController.toggleStatus);
+router.patch('/update-selling-prices', auth, recipeController.updateSellingPrices);
 router.delete('/:id', auth, recipeController.delete);
 router.post('/:id/cook', auth, recipeController.cook);
 

@@ -27,6 +27,32 @@ exports.delete = async (req, res) => {
   res.status(204).send();
 };
 
+exports.toggleStatus = async (req, res) => {
+  try {
+    const recipe = await Recipe.findById(req.params.id);
+    if (!recipe) return res.status(404).json({ error: 'Recipe not found' });
+    
+    recipe.isActive = !recipe.isActive;
+    await recipe.save();
+    
+    res.json({ message: 'Recipe status updated', isActive: recipe.isActive });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+exports.updateSellingPrices = async (req, res) => {
+  try {
+    await Recipe.updateMany(
+      { sellingPrice: { $exists: false } },
+      { $set: { sellingPrice: 100 } }
+    );
+    res.json({ message: 'Default selling prices updated' });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
 exports.cook = async (req, res) => {
   try {
     const recipe = await Recipe.findById(req.params.id).populate('ingredients.inventoryId');
