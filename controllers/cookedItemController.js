@@ -3,6 +3,7 @@ const FinishedGood = require('../models/FinishedGood');
 const SemiFinishedGood = require('../models/SemiFinishedGood');
 const Recipe = require('../models/Recipe');
 const Inventory = require('../models/Inventory');
+const { create: createStockLog } = require('./stockLogController');
 
 exports.getAll = async (req, res) => {
   try {
@@ -34,9 +35,11 @@ exports.create = async (req, res) => {
     // Deduct ingredients from inventory
     for (const ing of recipe.ingredients) {
       const requiredQty = ing.quantity * (quantity || 1);
+      const oldInventory = await Inventory.findById(ing.inventoryId._id);
       await Inventory.findByIdAndUpdate(ing.inventoryId._id, {
         $inc: { quantity: -requiredQty }
       });
+      await createStockLog(ing.inventoryId._id, ing.inventoryId.name, 'Used', requiredQty, oldInventory.quantity, oldInventory.quantity - requiredQty);
     }
 
     // Create cooked item
@@ -88,9 +91,11 @@ exports.updateStatus = async (req, res) => {
             ? ingredientQuantities[ing.inventoryId.toString()] 
             : ing.quantity;
           
+          const oldInventory = await Inventory.findById(ing.inventoryId);
           await Inventory.findByIdAndUpdate(ing.inventoryId, {
             $inc: { quantity: restockQuantity }
           });
+          await createStockLog(ing.inventoryId, ing.name, 'Restocked', restockQuantity, oldInventory.quantity, oldInventory.quantity + restockQuantity);
         }
       }
       

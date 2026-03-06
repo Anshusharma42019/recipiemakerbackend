@@ -38,6 +38,7 @@ app.use('/api/inventory', require('./routes/inventoryRoutes'));
 app.use('/api/cooked-items', require('./routes/cookedItemRoutes'));
 app.use('/api/finished-goods', require('./routes/finishedGoodRoutes'));
 app.use('/api/semi-finished-goods', require('./routes/semiFinishedGoodRoutes'));
+app.use('/api/stock-logs', require('./routes/stockLogRoutes'));
 
 const PORT = process.env.PORT || 5000;
 
