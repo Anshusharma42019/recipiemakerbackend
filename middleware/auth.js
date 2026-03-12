@@ -16,7 +16,7 @@ const auth = async (req, res, next) => {
       return res.status(401).json({ error: 'Account deactivated', logout: true });
     }
     
-    req.user = decoded;
+    req.user = { id: decoded.userId, ...decoded };
     next();
   } catch (err) {
     res.status(401).json({ error: 'Invalid token' });
