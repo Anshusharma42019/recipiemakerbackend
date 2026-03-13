@@ -46,7 +46,7 @@ exports.getOne = async (req, res) => {
 // Create loss record from cooking item
 exports.createFromCooking = async (req, res) => {
   try {
-    const { cookedItemId, lossType, lossReason, lostIngredients, lostQuantities, notes, remakeWithFreshIngredients } = req.body;
+    const { cookedItemId, lossType, lossReason, lostIngredients, lostQuantities, notes, remakeWithFreshIngredients, isCompleteLoss } = req.body;
     
     const userId = req.user?.id || req.user?.userId;
     if (!userId) {
@@ -67,11 +67,11 @@ exports.createFromCooking = async (req, res) => {
     
     // Calculate loss value
     let lossValue = 0;
-    if (lossType === 'complete') {
+    if (isCompleteLoss) {
       lossValue = (recipe.sellingPrice || 0) * cookedItem.quantity;
-    } else if (lossType === 'partial' && lostIngredients && lostIngredients.length > 0) {
-      // For partial loss, calculate based on ingredient costs or a percentage of recipe value
-      const lostIngredientCount = lostIngredients.length;
+    } else if (lostQuantities) {
+      // For partial loss, calculate based on lost ingredient quantities
+      const lostIngredientCount = Object.keys(lostQuantities).filter(key => lostQuantities[key] > 0).length;
       const totalIngredientCount = cookedItem.ingredients.length;
       const lossPercentage = lostIngredientCount / totalIngredientCount;
       lossValue = (recipe.sellingPrice || 0) * cookedItem.quantity * lossPercentage;
@@ -100,7 +100,7 @@ exports.createFromCooking = async (req, res) => {
       lossReason,
       lossValue,
       ingredients: ingredientsWithLoss,
-      lostIngredients: lossType === 'partial' ? lostIngredients : cookedItem.ingredients.map(ing => ing.inventoryId._id || ing.inventoryId),
+      lostIngredients: Object.keys(lostQuantities || {}).filter(key => lostQuantities[key] > 0),
       lostQuantities: lostQuantities || {},
       userId: userId,
       lossDate: new Date(),
@@ -111,93 +111,69 @@ exports.createFromCooking = async (req, res) => {
     
     // If user wants to remake with fresh ingredients
     if (remakeWithFreshIngredients) {
-      if (lossType === 'complete') {
-        // Create new cooking item with same recipe and quantity
-        const newCookedItem = new CookedItem({
-          recipeId: cookedItem.recipeId,
-          title: cookedItem.title,
-          quantity: cookedItem.quantity,
-          ingredients: cookedItem.ingredients.map(ing => ({
-            inventoryId: ing.inventoryId._id || ing.inventoryId,
-            name: ing.name,
-            quantity: ing.quantity,
-            unit: ing.unit
-          })),
-          status: 'cooking',
-          userId: userId
+      // Create new cooking item with same recipe and quantity
+      const newCookedItem = new CookedItem({
+        recipeId: cookedItem.recipeId,
+        title: cookedItem.title,
+        quantity: cookedItem.quantity,
+        ingredients: cookedItem.ingredients.map(ing => ({
+          inventoryId: ing.inventoryId._id || ing.inventoryId,
+          name: ing.name,
+          quantity: ing.quantity,
+          unit: ing.unit
+        })),
+        status: 'cooking',
+        userId: userId
+      });
+      
+      await newCookedItem.save();
+      
+      // Deduct fresh ingredients from inventory and create stock logs
+      const StockLog = require('../models/StockLog');
+      
+      for (const ingredient of cookedItem.ingredients) {
+        const inventoryId = ingredient.inventoryId._id || ingredient.inventoryId;
+        const quantityToDeduct = lostQuantities && lostQuantities[inventoryId] 
+          ? lostQuantities[inventoryId] 
+          : ingredient.quantity;
+        
+        // Get current inventory before update
+        const currentInventory = await Inventory.findById(inventoryId);
+        if (!currentInventory) continue;
+        
+        const previousStock = currentInventory.quantity;
+        const newStock = previousStock - quantityToDeduct;
+        
+        // Update inventory
+        await Inventory.findByIdAndUpdate(
+          inventoryId,
+          { $inc: { quantity: -quantityToDeduct } },
+          { new: true }
+        );
+        
+        // Create stock log entry for the fresh ingredient usage
+        await StockLog.create({
+          itemId: inventoryId,
+          itemName: ingredient.name,
+          action: 'Used',
+          quantity: quantityToDeduct,
+          previousStock: previousStock,
+          newStock: newStock
         });
-        
-        await newCookedItem.save();
-        
-        // Deduct fresh ingredients from inventory
-        for (const ingredient of cookedItem.ingredients) {
-          const inventoryId = ingredient.inventoryId._id || ingredient.inventoryId;
-          await Inventory.findByIdAndUpdate(
-            inventoryId,
-            { $inc: { quantity: -ingredient.quantity } },
-            { new: true }
-          );
-        }
-      } else {
-        // For partial loss with remake, remove the original item and create a new complete one
-        // This prevents having two cooking items
-        
-        // Create new cooking item with all ingredients (fresh versions)
-        const newCookedItem = new CookedItem({
-          recipeId: cookedItem.recipeId,
-          title: cookedItem.title,
-          quantity: cookedItem.quantity,
-          ingredients: cookedItem.ingredients.map(ing => ({
-            inventoryId: ing.inventoryId._id || ing.inventoryId,
-            name: ing.name,
-            quantity: ing.quantity,
-            unit: ing.unit
-          })),
-          status: 'cooking',
-          userId: userId
-        });
-        
-        await newCookedItem.save();
-        
-        // Deduct only the lost ingredients from inventory (since good ingredients are still being used)
-        const lostIngredientsData = cookedItem.ingredients.filter(ing => {
-          const ingId = ing.inventoryId._id || ing.inventoryId;
-          return lostIngredients && lostIngredients.includes(ingId.toString());
-        });
-        
-        for (const ingredient of lostIngredientsData) {
-          const inventoryId = ingredient.inventoryId._id || ingredient.inventoryId;
-          const quantityToDeduct = lostQuantities && lostQuantities[inventoryId] 
-            ? lostQuantities[inventoryId] 
-            : ingredient.quantity;
-          
-          await Inventory.findByIdAndUpdate(
-            inventoryId,
-            { $inc: { quantity: -quantityToDeduct } },
-            { new: true }
-          );
-        }
       }
     }
     
     // Handle cooked item based on loss type and remake decision
-    if (lossType === 'complete' || remakeWithFreshIngredients) {
-      // For complete loss OR when remaking with fresh ingredients, remove the original item
+    if (isCompleteLoss && !remakeWithFreshIngredients) {
+      // For complete loss without remake, remove the cooking item entirely
+      await CookedItem.findByIdAndDelete(cookedItemId);
+    } else if (remakeWithFreshIngredients) {
+      // When remaking with fresh ingredients, remove the original item
       await CookedItem.findByIdAndDelete(cookedItemId);
     } else {
-      // For partial loss without remake
-      // Check if all ingredients are lost (recipe becomes impossible to complete)
-      const totalIngredients = cookedItem.ingredients.length;
-      const lostIngredientsCount = lostIngredients ? lostIngredients.length : 0;
-      
-      if (lostIngredientsCount >= totalIngredients) {
-        // If all ingredients are lost, remove the cooking item
-        await CookedItem.findByIdAndDelete(cookedItemId);
-      } else {
-        // Keep the item but link to loss record
-        cookedItem.lossRecordId = loss._id;
-        await cookedItem.save();
-      }
+      // For partial loss without remake, keep the item but link to loss record
+      cookedItem.lossRecordId = loss._id;
+      await cookedItem.save();
     }
     
     res.status(201).json(loss);
