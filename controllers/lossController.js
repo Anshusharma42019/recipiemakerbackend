@@ -80,15 +80,13 @@ exports.createFromCooking = async (req, res) => {
     // Prepare ingredients with loss information
     const ingredientsWithLoss = cookedItem.ingredients.map(ing => {
       const ingId = ing.inventoryId._id || ing.inventoryId;
-      const isLost = lossType === 'complete' || (lostIngredients && lostIngredients.includes(ingId.toString()));
-      const lostQuantity = isLost ? (lostQuantities && lostQuantities[ingId] ? lostQuantities[ingId] : ing.quantity) : 0;
+      const lostQuantity = lostQuantities && lostQuantities[ingId] ? lostQuantities[ingId] : 0;
       
       return {
         inventoryId: ingId,
         name: ing.name,
         quantity: ing.quantity,
         unit: ing.unit,
-        isLost: isLost,
         lostQuantity: lostQuantity
       };
     });

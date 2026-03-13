@@ -16,12 +16,10 @@ const lossSchema = new mongoose.Schema({
   },
   lossType: {
     type: String,
-    enum: ['partial', 'complete'],
     required: true
   },
   lossReason: {
     type: String,
-    enum: ['spoiled', 'burnt', 'contaminated', 'overcooked', 'undercooked', 'accident', 'other'],
     required: true
   },
   lossValue: {
@@ -36,10 +34,6 @@ const lossSchema = new mongoose.Schema({
     name: String,
     quantity: Number,
     unit: String,
-    isLost: {
-      type: Boolean,
-      default: false
-    },
     lostQuantity: {
       type: Number,
       default: 0
