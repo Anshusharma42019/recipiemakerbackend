@@ -7,16 +7,68 @@ const Inventory = require('../models/Inventory');
 exports.getAll = async (req, res) => {
   try {
     const userId = req.user?.id || req.user?.userId;
+    const userRole = req.user?.role;
+    const userDepartmentId = req.user?.departmentId;
+    
     if (!userId) {
       return res.status(400).json({ error: 'User ID not found in request' });
     }
     
-    const losses = await Loss.find({ userId: userId })
-      .populate('recipeId', 'title sellingPrice')
-      .populate('ingredients.inventoryId', 'name')
-      .sort({ createdAt: -1 });
+    let losses;
+    
+    if (userRole === 'Admin') {
+      // Admin can see all loss records
+      losses = await Loss.find({})
+        .populate({
+          path: 'recipeId',
+          select: 'title sellingPrice departmentId',
+          populate: {
+            path: 'departmentId',
+            select: 'name code'
+          }
+        })
+        .populate('ingredients.inventoryId', 'name')
+        .sort({ createdAt: -1 });
+    } else if (userDepartmentId) {
+      // Non-admin users see loss records from their department
+      losses = await Loss.find({})
+        .populate({
+          path: 'recipeId',
+          select: 'title sellingPrice departmentId',
+          populate: {
+            path: 'departmentId',
+            select: 'name code'
+          }
+        })
+        .populate('ingredients.inventoryId', 'name')
+        .sort({ createdAt: -1 });
+      
+      // Filter by department after population
+      losses = losses.filter(loss => {
+        // If recipe is not found or doesn't have department, exclude it for non-admin users
+        if (!loss.recipeId || !loss.recipeId.departmentId) {
+          return false;
+        }
+        return loss.recipeId.departmentId._id.toString() === userDepartmentId.toString();
+      });
+    } else {
+      // Fallback to user's own records if no department
+      losses = await Loss.find({ userId: userId })
+        .populate({
+          path: 'recipeId',
+          select: 'title sellingPrice departmentId',
+          populate: {
+            path: 'departmentId',
+            select: 'name code'
+          }
+        })
+        .populate('ingredients.inventoryId', 'name')
+        .sort({ createdAt: -1 });
+    }
+    
     res.json(losses);
   } catch (error) {
+    console.error('Error in getAll losses:', error);
     res.status(500).json({ error: error.message });
   }
 };
@@ -60,7 +112,7 @@ exports.createFromCooking = async (req, res) => {
     }
     
     // Get the recipe for pricing
-    const recipe = await Recipe.findById(cookedItem.recipeId);
+    const recipe = await Recipe.findById(cookedItem.recipeId).populate('departmentId');
     if (!recipe) {
       return res.status(404).json({ error: 'Recipe not found' });
     }
@@ -108,6 +160,18 @@ exports.createFromCooking = async (req, res) => {
     });
     
     await loss.save();
+    
+    // Populate the saved loss record with recipe and department info
+    const populatedLoss = await Loss.findById(loss._id)
+      .populate({
+        path: 'recipeId',
+        select: 'title sellingPrice departmentId',
+        populate: {
+          path: 'departmentId',
+          select: 'name code'
+        }
+      })
+      .populate('ingredients.inventoryId', 'name');
     
     // If user wants to remake with fresh ingredients
     if (remakeWithFreshIngredients) {
@@ -176,8 +240,9 @@ exports.createFromCooking = async (req, res) => {
       await cookedItem.save();
     }
     
-    res.status(201).json(loss);
+    res.status(201).json(populatedLoss);
   } catch (error) {
+    console.error('Error in createFromCooking:', error);
     res.status(500).json({ error: error.message });
   }
 };

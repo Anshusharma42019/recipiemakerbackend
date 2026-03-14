@@ -1,19 +1,26 @@
 const XLSX = require('xlsx');
 const Inventory = require('../models/Inventory');
 const Recipe = require('../models/Recipe');
+const Department = require('../models/Department');
 
 const dataTypes = {
   inventory: {
     model: Inventory,
-    fields: ['productCode', 'name', 'category', 'quantity', 'unit', 'price', 'minStock', 'supplier'],
-    required: ['name', 'quantity', 'unit'],
+    fields: ['productCode', 'name', 'category', 'quantity', 'unit', 'price', 'minStock', 'supplier', 'departmentCode'],
+    required: ['name', 'quantity', 'unit', 'departmentCode'],
     unique: ['productCode', 'name']
   },
   recipes: {
     model: Recipe,
-    fields: ['title', 'sellingPrice', 'isActive'],
-    required: ['title'],
+    fields: ['title', 'sellingPrice', 'isActive', 'departmentCode'],
+    required: ['title', 'departmentCode'],
     unique: ['title']
+  },
+  departments: {
+    model: Department,
+    fields: ['name', 'code', 'description', 'isActive'],
+    required: ['name', 'code'],
+    unique: ['name', 'code']
   }
 };
 
@@ -42,11 +49,24 @@ exports.exportData = async (req, res) => {
     const config = dataTypes[type];
     if (!config) return res.status(400).json({ error: 'Invalid data type' });
 
-    const data = await config.model.find({});
+    let data;
+    if (type === 'inventory') {
+      data = await config.model.find({}).populate('departmentId', 'name code');
+    } else if (type === 'recipes') {
+      data = await config.model.find({}).populate('departmentId', 'name code');
+    } else {
+      data = await config.model.find({});
+    }
+    
     const rows = [config.fields];
     
     data.forEach(item => {
-      const row = config.fields.map(field => item[field] || '');
+      const row = config.fields.map(field => {
+        if (field === 'departmentCode' && item.departmentId) {
+          return item.departmentId.code;
+        }
+        return item[field] || '';
+      });
       rows.push(row);
     });
 
@@ -84,6 +104,14 @@ exports.previewImport = async (req, res) => {
       config.required.forEach(field => {
         if (!row[field]) errors.push(`${field} is required`);
       });
+
+      // Check department code exists (for inventory and recipes)
+      if ((type === 'inventory' || type === 'recipes') && row.departmentCode) {
+        const department = await Department.findOne({ code: row.departmentCode });
+        if (!department) {
+          errors.push(`Department with code '${row.departmentCode}' not found`);
+        }
+      }
 
       // Check unique fields
       for (const field of config.unique) {
@@ -143,6 +171,17 @@ exports.importData = async (req, res) => {
       config.required.forEach(field => {
         if (!row[field]) errors.push(`${field} is required`);
       });
+
+      // Resolve department code to ID (for inventory and recipes)
+      if ((type === 'inventory' || type === 'recipes') && row.departmentCode) {
+        const department = await Department.findOne({ code: row.departmentCode });
+        if (!department) {
+          errors.push(`Department with code '${row.departmentCode}' not found`);
+        } else {
+          row.departmentId = department._id;
+          delete row.departmentCode; // Remove the code field
+        }
+      }
 
       if (errors.length > 0) {
         if (mode === 'all') {

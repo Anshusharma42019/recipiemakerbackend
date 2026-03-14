@@ -2,23 +2,31 @@ const Recipe = require('../models/Recipe');
 const Inventory = require('../models/Inventory');
 
 exports.getAll = async (req, res) => {
-  const recipes = await Recipe.find().populate('ingredients.inventoryId');
+  const recipes = await Recipe.find()
+    .populate('ingredients.inventoryId')
+    .populate('departmentId', 'name code');
   res.json(recipes);
 };
 
 exports.getOne = async (req, res) => {
-  const recipe = await Recipe.findById(req.params.id).populate('ingredients.inventoryId');
+  const recipe = await Recipe.findById(req.params.id)
+    .populate('ingredients.inventoryId')
+    .populate('departmentId', 'name code');
   res.json(recipe);
 };
 
 exports.create = async (req, res) => {
   const recipe = await Recipe.create(req.body);
-  const populated = await Recipe.findById(recipe._id).populate('ingredients.inventoryId');
+  const populated = await Recipe.findById(recipe._id)
+    .populate('ingredients.inventoryId')
+    .populate('departmentId', 'name code');
   res.status(201).json(populated);
 };
 
 exports.update = async (req, res) => {
-  const recipe = await Recipe.findByIdAndUpdate(req.params.id, req.body, { new: true });
+  const recipe = await Recipe.findByIdAndUpdate(req.params.id, req.body, { new: true })
+    .populate('ingredients.inventoryId')
+    .populate('departmentId', 'name code');
   res.json(recipe);
 };
 

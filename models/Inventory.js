@@ -3,6 +3,7 @@ const mongoose = require('mongoose');
 const inventorySchema = new mongoose.Schema({
   name: { type: String, required: true },
   productCode: { type: String, unique: true, sparse: true },
+  departmentId: { type: mongoose.Schema.Types.ObjectId, ref: 'Department', required: true },
   quantity: { type: Number, required: true, default: 0 },
   unit: { type: String, required: true },
   price: { type: Number, default: 0 },

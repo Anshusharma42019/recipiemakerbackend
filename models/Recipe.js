@@ -2,6 +2,7 @@ const mongoose = require('mongoose');
 
 const recipeSchema = new mongoose.Schema({
   title: { type: String, required: true },
+  departmentId: { type: mongoose.Schema.Types.ObjectId, ref: 'Department', required: true },
   ingredients: [{
     inventoryId: { type: mongoose.Schema.Types.ObjectId, ref: 'Inventory', required: true },
     quantity: { type: Number, required: true },

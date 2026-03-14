@@ -4,28 +4,85 @@ const User = require('../models/User');
 
 exports.register = async (req, res) => {
   try {
-    const { email, password, name, role } = req.body;
+    const { email, password, name, role, departmentId } = req.body;
+    console.log('Register request:', { email, name, role, departmentId });
+    
     const hashedPassword = await bcrypt.hash(password, 10);
-    const user = await User.create({ email, password: hashedPassword, name, role: role || 'User' });
-    const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET);
-    res.status(201).json({ token, user: { id: user._id, email: user.email, name: user.name, role: user.role, isActive: user.isActive } });
+    
+    const userData = { 
+      email, 
+      password: hashedPassword, 
+      name, 
+      role: role || 'Staff'
+    };
+    
+    // Only add departmentId for non-admin users (Staff, Chef, and Waiter)
+    if (role !== 'Admin' && departmentId) {
+      userData.departmentId = departmentId;
+    }
+    
+    console.log('Creating user with data:', userData);
+    const user = await User.create(userData);
+    console.log('User created successfully:', user._id);
+    
+    const tokenPayload = { userId: user._id, role: user.role };
+    if (user.departmentId) {
+      tokenPayload.departmentId = user.departmentId;
+    }
+    
+    const token = jwt.sign(tokenPayload, process.env.JWT_SECRET);
+    res.status(201).json({ 
+      token, 
+      user: { 
+        id: user._id, 
+        email: user.email, 
+        name: user.name, 
+        role: user.role, 
+        departmentId: user.departmentId,
+        isActive: user.isActive 
+      } 
+    });
   } catch (error) {
-    console.error('Register error:', error);
-    res.status(500).json({ error: 'Failed to create user' });
+    console.error('Register error details:', error);
+    res.status(500).json({ error: 'Failed to create user', details: error.message });
   }
 };
 
 exports.login = async (req, res) => {
-  const { email, password } = req.body;
-  const user = await User.findOne({ email });
-  if (!user || !(await bcrypt.compare(password, user.password))) {
-    return res.status(401).json({ error: 'Invalid credentials' });
+  try {
+    const { email, password } = req.body;
+    console.log('Login attempt for:', email);
+    
+    const user = await User.findOne({ email }).populate('departmentId', 'name code');
+    if (!user || !(await bcrypt.compare(password, user.password))) {
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
+    if (user.isActive === false) {
+      return res.status(401).json({ error: 'Account is deactivated' });
+    }
+    
+    console.log('Login successful for user:', user._id, 'Role:', user.role, 'Department:', user.departmentId?._id);
+    
+    const tokenPayload = { userId: user._id, role: user.role };
+    if (user.departmentId) {
+      tokenPayload.departmentId = user.departmentId._id;
+    }
+    
+    const token = jwt.sign(tokenPayload, process.env.JWT_SECRET);
+    res.json({ 
+      token, 
+      user: { 
+        id: user._id, 
+        email: user.email, 
+        name: user.name, 
+        role: user.role,
+        departmentId: user.departmentId
+      } 
+    });
+  } catch (error) {
+    console.error('Login error:', error);
+    res.status(500).json({ error: 'Login failed', details: error.message });
   }
-  if (user.isActive === false) {
-    return res.status(401).json({ error: 'Account is deactivated' });
-  }
-  const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET);
-  res.json({ token, user: { id: user._id, email: user.email, name: user.name, role: user.role } });
 };
 
 exports.changePassword = async (req, res) => {
@@ -41,7 +98,7 @@ exports.changePassword = async (req, res) => {
 
 exports.getAllUsers = async (req, res) => {
   try {
-    const users = await User.find({}, '-password');
+    const users = await User.find({}, '-password').populate('departmentId', 'name code');
     res.json(users);
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch users' });
@@ -50,12 +107,24 @@ exports.getAllUsers = async (req, res) => {
 
 exports.updateUser = async (req, res) => {
   try {
-    const { name, email, role, isActive } = req.body;
+    const { name, email, role, isActive, departmentId } = req.body;
+    
+    const updateData = { name, email, role, isActive };
+    
+    // Only add departmentId for non-admin users
+    if (role !== 'Admin') {
+      updateData.departmentId = departmentId || null;
+    } else {
+      // Remove departmentId for admin users
+      updateData.departmentId = null;
+    }
+    
     const user = await User.findByIdAndUpdate(
       req.params.id,
-      { name, email, role, isActive },
+      updateData,
       { new: true, select: '-password' }
-    );
+    ).populate('departmentId', 'name code');
+    
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }
