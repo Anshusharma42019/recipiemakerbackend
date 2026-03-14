@@ -7,6 +7,8 @@ const stockLogSchema = new mongoose.Schema({
   quantity: { type: Number, required: true },
   previousStock: { type: Number, required: true },
   newStock: { type: Number, required: true },
+  departmentId: { type: mongoose.Schema.Types.ObjectId, ref: 'Department' },
+  departmentName: { type: String },
   createdAt: { type: Date, default: Date.now }
 });
 

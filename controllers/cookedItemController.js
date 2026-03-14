@@ -7,7 +7,16 @@ const { create: createStockLog } = require('./stockLogController');
 
 exports.getAll = async (req, res) => {
   try {
-    const items = await CookedItem.find({}).populate('ingredients.inventoryId');
+    const items = await CookedItem.find({})
+      .populate({
+        path: 'recipeId',
+        select: 'title sellingPrice departmentId',
+        populate: {
+          path: 'departmentId',
+          select: 'name code'
+        }
+      })
+      .populate('ingredients.inventoryId');
     res.json(items);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -17,7 +26,9 @@ exports.getAll = async (req, res) => {
 exports.create = async (req, res) => {
   try {
     const { recipeId, quantity } = req.body;
-    const recipe = await Recipe.findById(recipeId).populate('ingredients.inventoryId');
+    const recipe = await Recipe.findById(recipeId)
+      .populate('ingredients.inventoryId')
+      .populate('departmentId', 'name code');
     
     if (!recipe) return res.status(404).json({ error: 'Recipe not found' });
 
@@ -39,7 +50,16 @@ exports.create = async (req, res) => {
       await Inventory.findByIdAndUpdate(ing.inventoryId._id, {
         $inc: { quantity: -requiredQty }
       });
-      await createStockLog(ing.inventoryId._id, ing.inventoryId.name, 'Used', requiredQty, oldInventory.quantity, oldInventory.quantity - requiredQty);
+      await createStockLog(
+        ing.inventoryId._id, 
+        ing.inventoryId.name, 
+        'Used', 
+        requiredQty, 
+        oldInventory.quantity, 
+        oldInventory.quantity - requiredQty,
+        recipe.departmentId?._id,
+        recipe.departmentId?.name
+      );
     }
 
     // Create cooked item
@@ -70,6 +90,9 @@ exports.updateStatus = async (req, res) => {
     
     if (!item) return res.status(404).json({ error: 'Item not found' });
 
+    // Get recipe department info for stock logs
+    const recipe = await Recipe.findById(item.recipeId).populate('departmentId', 'name code');
+
     if (status === 'finished') {
       const finishedGood = await FinishedGood.create({
         recipeId: item.recipeId,
@@ -95,7 +118,16 @@ exports.updateStatus = async (req, res) => {
           await Inventory.findByIdAndUpdate(ing.inventoryId, {
             $inc: { quantity: restockQuantity }
           });
-          await createStockLog(ing.inventoryId, ing.name, 'Restocked', restockQuantity, oldInventory.quantity, oldInventory.quantity + restockQuantity);
+          await createStockLog(
+            ing.inventoryId, 
+            ing.name, 
+            'Restocked', 
+            restockQuantity, 
+            oldInventory.quantity, 
+            oldInventory.quantity + restockQuantity,
+            recipe?.departmentId?._id,
+            recipe?.departmentId?.name
+          );
         }
       }
       

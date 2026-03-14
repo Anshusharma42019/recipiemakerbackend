@@ -15,7 +15,16 @@ exports.create = async (req, res) => {
   try {
     const item = await Inventory.create(req.body);
     const populated = await Inventory.findById(item._id).populate('departmentId', 'name code');
-    await createStockLog(item._id, item.name, 'Added', item.quantity, 0, item.quantity);
+    await createStockLog(
+      item._id, 
+      item.name, 
+      'Added', 
+      item.quantity, 
+      0, 
+      item.quantity,
+      populated.departmentId?._id,
+      populated.departmentId?.name
+    );
     res.status(201).json(populated);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -24,13 +33,22 @@ exports.create = async (req, res) => {
 
 exports.update = async (req, res) => {
   try {
-    const oldItem = await Inventory.findById(req.params.id);
+    const oldItem = await Inventory.findById(req.params.id).populate('departmentId', 'name code');
     const item = await Inventory.findByIdAndUpdate(req.params.id, req.body, { new: true })
       .populate('departmentId', 'name code');
     if (oldItem.quantity !== item.quantity) {
       const action = item.quantity > oldItem.quantity ? 'Added' : 'Used';
       const quantityChange = Math.abs(item.quantity - oldItem.quantity);
-      await createStockLog(item._id, item.name, action, quantityChange, oldItem.quantity, item.quantity);
+      await createStockLog(
+        item._id, 
+        item.name, 
+        action, 
+        quantityChange, 
+        oldItem.quantity, 
+        item.quantity,
+        item.departmentId?._id,
+        item.departmentId?.name
+      );
     }
     res.json(item);
   } catch (error) {

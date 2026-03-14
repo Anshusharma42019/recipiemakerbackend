@@ -222,7 +222,9 @@ exports.createFromCooking = async (req, res) => {
           action: 'Used',
           quantity: quantityToDeduct,
           previousStock: previousStock,
-          newStock: newStock
+          newStock: newStock,
+          departmentId: recipe.departmentId?._id,
+          departmentName: recipe.departmentId?.name
         });
       }
     }
