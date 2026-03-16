@@ -42,6 +42,7 @@ app.use('/api/losses', require('./routes/lossRoutes'));
 app.use('/api/stock-logs', require('./routes/stockLogRoutes'));
 app.use('/api/bulk', require('./routes/bulkDataRoutes'));
 app.use('/api/departments', require('./routes/departmentRoutes'));
+app.use('/api', require('./routes/transfers'));
 
 const PORT = process.env.PORT || 5000;
 

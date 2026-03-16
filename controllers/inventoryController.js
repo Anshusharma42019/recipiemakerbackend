@@ -13,7 +13,13 @@ exports.getOne = async (req, res) => {
 
 exports.create = async (req, res) => {
   try {
-    const item = await Inventory.create(req.body);
+    // Add userId from authenticated user
+    const itemData = {
+      ...req.body,
+      userId: req.user.id
+    };
+    
+    const item = await Inventory.create(itemData);
     const populated = await Inventory.findById(item._id).populate('departmentId', 'name code');
     await createStockLog(
       item._id, 
