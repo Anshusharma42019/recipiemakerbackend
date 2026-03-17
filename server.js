@@ -45,23 +45,42 @@ if (!process.env.JWT_SECRET) {
   process.exit(1);
 }
 
-// Set mongoose options for better Vercel compatibility
-mongoose.set('bufferCommands', false);
+// Don't disable buffer commands for Vercel - let mongoose handle it
+// mongoose.set('bufferCommands', false);
 mongoose.set('maxTimeMS', 20000);
 
-mongoose.connect(process.env.MONGO_URL, {
-  serverSelectionTimeoutMS: 10000, // Timeout after 10s instead of 30s
-  socketTimeoutMS: 45000, // Close sockets after 45s of inactivity
-  maxPoolSize: 10, // Maintain up to 10 socket connections
-  serverSelectionTimeoutMS: 5000, // Keep trying to send operations for 5 seconds
-  socketTimeoutMS: 45000, // Close sockets after 45 seconds of inactivity
-  family: 4 // Use IPv4, skip trying IPv6
-})
-  .then(() => console.log('MongoDB connected successfully'))
-  .catch(err => {
+// Global connection promise to reuse
+let cachedConnection = null;
+
+const connectToDatabase = async () => {
+  if (cachedConnection && mongoose.connection.readyState === 1) {
+    return cachedConnection;
+  }
+
+  if (!cachedConnection) {
+    cachedConnection = mongoose.connect(process.env.MONGO_URL, {
+      serverSelectionTimeoutMS: 10000,
+      socketTimeoutMS: 45000,
+      maxPoolSize: 10,
+      family: 4
+    });
+  }
+
+  try {
+    await cachedConnection;
+    console.log('MongoDB connected successfully');
+    return cachedConnection;
+  } catch (err) {
     console.error('MongoDB connection error:', err);
-    process.exit(1);
-  });
+    cachedConnection = null;
+    throw err;
+  }
+};
+
+// Initialize connection
+connectToDatabase().catch(err => {
+  console.error('Initial MongoDB connection failed:', err);
+});
 
 // Health check endpoint
 app.get('/', (req, res) => {

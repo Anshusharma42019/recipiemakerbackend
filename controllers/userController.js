@@ -54,16 +54,18 @@ exports.login = async (req, res) => {
     const { email, password } = req.body;
     console.log('Login attempt for:', email);
     
-    // Add connection check
+    // Ensure database connection is established
     if (mongoose.connection.readyState !== 1) {
-      console.log('MongoDB not connected, attempting to reconnect...');
+      console.log('MongoDB not connected, attempting to connect...');
       await mongoose.connect(process.env.MONGO_URL, {
-        serverSelectionTimeoutMS: 5000,
+        serverSelectionTimeoutMS: 10000,
         socketTimeoutMS: 45000,
+        maxPoolSize: 10,
+        family: 4
       });
     }
     
-    const user = await User.findOne({ email }).populate('departmentId', 'name code').maxTimeMS(10000);
+    const user = await User.findOne({ email }).populate('departmentId', 'name code');
     if (!user || !(await bcrypt.compare(password, user.password))) {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
