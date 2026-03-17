@@ -9,7 +9,7 @@ const app = express();
 const allowedOrigins = [
   "http://localhost:5173",
   "http://localhost:5000",
-  "https://recipiemakerbackend-nine.vercel.app",
+  "https://recipiemakerbackend-oy2o.vercel.app",
   "https://recipiemakerfrontend-pied.vercel.app"
 ];
 
