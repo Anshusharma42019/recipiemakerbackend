@@ -1,5 +1,6 @@
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const mongoose = require('mongoose');
 const User = require('../models/User');
 
 exports.register = async (req, res) => {
@@ -53,7 +54,16 @@ exports.login = async (req, res) => {
     const { email, password } = req.body;
     console.log('Login attempt for:', email);
     
-    const user = await User.findOne({ email }).populate('departmentId', 'name code');
+    // Add connection check
+    if (mongoose.connection.readyState !== 1) {
+      console.log('MongoDB not connected, attempting to reconnect...');
+      await mongoose.connect(process.env.MONGO_URL, {
+        serverSelectionTimeoutMS: 5000,
+        socketTimeoutMS: 45000,
+      });
+    }
+    
+    const user = await User.findOne({ email }).populate('departmentId', 'name code').maxTimeMS(10000);
     if (!user || !(await bcrypt.compare(password, user.password))) {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
@@ -81,7 +91,15 @@ exports.login = async (req, res) => {
     });
   } catch (error) {
     console.error('Login error:', error);
-    res.status(500).json({ error: 'Login failed', details: error.message });
+    
+    // More specific error messages
+    if (error.name === 'MongooseError' || error.message.includes('buffering timed out')) {
+      res.status(500).json({ error: 'Database connection timeout', details: 'Please try again in a moment' });
+    } else if (error.name === 'MongoServerSelectionError') {
+      res.status(500).json({ error: 'Database server unavailable', details: 'Please check your connection' });
+    } else {
+      res.status(500).json({ error: 'Login failed', details: error.message });
+    }
   }
 };
 
