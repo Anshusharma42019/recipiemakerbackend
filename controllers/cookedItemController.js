@@ -1,6 +1,7 @@
 const CookedItem = require('../models/CookedItem');
 const FinishedGood = require('../models/FinishedGood');
 const SemiFinishedGood = require('../models/SemiFinishedGood');
+const AdjustedRecipe = require('../models/AdjustedRecipe');
 const Recipe = require('../models/Recipe');
 const Inventory = require('../models/Inventory');
 const { create: createStockLog } = require('./stockLogController');
@@ -25,34 +26,45 @@ exports.getAll = async (req, res) => {
 
 exports.create = async (req, res) => {
   try {
-    const { recipeId, quantity } = req.body;
+    const { recipeId, quantity, ingredients, isAdjusted } = req.body;
     const recipe = await Recipe.findById(recipeId)
       .populate('ingredients.inventoryId')
       .populate('departmentId', 'name code');
     
     if (!recipe) return res.status(404).json({ error: 'Recipe not found' });
 
+    // Use provided ingredients if adjusted, otherwise use recipe ingredients
+    const ingredientsToUse = isAdjusted && ingredients ? ingredients : recipe.ingredients;
+    
     // Check ingredients availability
-    for (const ing of recipe.ingredients) {
-      if (!ing.inventoryId) {
+    for (const ing of ingredientsToUse) {
+      const inventoryItem = isAdjusted ? 
+        await Inventory.findById(ing.inventoryId._id || ing.inventoryId) :
+        ing.inventoryId;
+      
+      if (!inventoryItem) {
         return res.status(400).json({ error: `Ingredient not found in inventory` });
       }
+      
       const requiredQty = ing.quantity * (quantity || 1);
-      if (ing.inventoryId.quantity < requiredQty) {
-        return res.status(400).json({ error: `Not enough ${ing.inventoryId.name}. Need ${requiredQty}, have ${ing.inventoryId.quantity}` });
+      if (inventoryItem.quantity < requiredQty) {
+        return res.status(400).json({ error: `Not enough ${inventoryItem.name}. Need ${requiredQty}, have ${inventoryItem.quantity}` });
       }
     }
 
     // Deduct ingredients from inventory
-    for (const ing of recipe.ingredients) {
+    for (const ing of ingredientsToUse) {
+      const inventoryId = ing.inventoryId._id || ing.inventoryId;
       const requiredQty = ing.quantity * (quantity || 1);
-      const oldInventory = await Inventory.findById(ing.inventoryId._id);
-      await Inventory.findByIdAndUpdate(ing.inventoryId._id, {
+      const oldInventory = await Inventory.findById(inventoryId);
+      
+      await Inventory.findByIdAndUpdate(inventoryId, {
         $inc: { quantity: -requiredQty }
       });
+      
       await createStockLog(
-        ing.inventoryId._id, 
-        ing.inventoryId.name, 
+        inventoryId, 
+        oldInventory.name, 
         'Used', 
         requiredQty, 
         oldInventory.quantity, 
@@ -67,18 +79,60 @@ exports.create = async (req, res) => {
       recipeId: recipe._id,
       title: recipe.title,
       quantity: quantity || 1,
-      ingredients: recipe.ingredients.map(ing => ({
-        inventoryId: ing.inventoryId._id,
-        name: ing.inventoryId.name,
-        quantity: ing.quantity * (quantity || 1),
-        unit: ing.unit
-      })),
-      status: 'cooking'
+      ingredients: ingredientsToUse.map(ing => {
+        const inventoryItem = isAdjusted ? 
+          { _id: ing.inventoryId._id || ing.inventoryId, name: ing.inventoryId.name || ing.name } :
+          ing.inventoryId;
+        return {
+          inventoryId: inventoryItem._id,
+          name: inventoryItem.name,
+          quantity: ing.quantity * (quantity || 1),
+          unit: ing.unit
+        };
+      }),
+      status: 'cooking',
+      isAdjusted: isAdjusted || false
     });
 
-    const populated = await CookedItem.findById(cookedItem._id).populate('ingredients.inventoryId');
+    // If this is an adjusted recipe, store the adjustment details
+    if (isAdjusted && ingredients) {
+      await AdjustedRecipe.create({
+        originalRecipeId: recipe._id,
+        title: recipe.title,
+        originalIngredients: recipe.ingredients.map(ing => ({
+          inventoryId: ing.inventoryId._id,
+          name: ing.inventoryId.name,
+          quantity: ing.quantity,
+          unit: ing.unit
+        })),
+        adjustedIngredients: ingredients.map(ing => ({
+          inventoryId: ing.inventoryId._id || ing.inventoryId,
+          name: ing.inventoryId.name || ing.name,
+          originalQuantity: recipe.ingredients.find(orig => 
+            (orig.inventoryId._id || orig.inventoryId).toString() === (ing.inventoryId._id || ing.inventoryId).toString()
+          )?.quantity || 0,
+          adjustedQuantity: ing.quantity,
+          unit: ing.unit
+        })),
+        cookedItemId: cookedItem._id,
+        userId: req.user?.id
+      });
+    }
+
+    const populated = await CookedItem.findById(cookedItem._id)
+      .populate('ingredients.inventoryId')
+      .populate({
+        path: 'recipeId',
+        select: 'title sellingPrice departmentId',
+        populate: {
+          path: 'departmentId',
+          select: 'name code'
+        }
+      });
+    
     res.status(201).json(populated);
   } catch (error) {
+    console.error('Error creating cooked item:', error);
     res.status(500).json({ error: error.message });
   }
 };
