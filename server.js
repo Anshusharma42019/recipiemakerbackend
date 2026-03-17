@@ -9,7 +9,7 @@ const allowedOrigins = [
   "http://localhost:5173",
   "http://localhost:5000",
   "https://recipiemakerbackend-nine.vercel.app",
-  "https://recipiemakerfrontend.vercel.app"
+  ""
 ];
 app.use(
   cors({
