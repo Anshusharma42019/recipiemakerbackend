@@ -3,13 +3,17 @@ const User = require('../models/User');
 
 const auth = async (req, res, next) => {
   const token = req.header('Authorization')?.replace('Bearer ', '');
-  if (!token) return res.status(401).json({ error: 'Access denied' });
+  
+  if (!token) {
+    return res.status(401).json({ error: 'Access denied - No token provided' });
+  }
+  
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     const user = await User.findById(decoded.userId);
     
     if (!user) {
-      return res.status(401).json({ error: 'User not found' });
+      return res.status(401).json({ error: 'User not found', logout: true });
     }
     
     if (user.isActive === false) {
@@ -19,7 +23,15 @@ const auth = async (req, res, next) => {
     req.user = { id: decoded.userId, role: decoded.role, ...decoded };
     next();
   } catch (err) {
-    res.status(401).json({ error: 'Invalid token' });
+    console.error('Auth middleware error:', err.message);
+    
+    if (err.name === 'TokenExpiredError') {
+      return res.status(401).json({ error: 'Token expired', logout: true });
+    } else if (err.name === 'JsonWebTokenError') {
+      return res.status(401).json({ error: 'Invalid token', logout: true });
+    } else {
+      return res.status(401).json({ error: 'Authentication failed', logout: true });
+    }
   }
 };
 

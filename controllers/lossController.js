@@ -16,8 +16,8 @@ exports.getAll = async (req, res) => {
     
     let losses;
     
-    if (userRole === 'Admin') {
-      // Admin can see all loss records
+    if (userRole === 'admin' || userRole === 'manager') {
+      // Admin and manager can see all loss records from all users
       losses = await Loss.find({})
         .populate({
           path: 'recipeId',

@@ -4,7 +4,7 @@ const userSchema = new mongoose.Schema({
   email: { type: String, required: true, unique: true },
   password: { type: String, required: true },
   name: String,
-  role: { type: String, default: 'Staff', enum: ['Staff', 'Chef', 'Waiter', 'Admin'] },
+  role: { type: String, enum: ['admin', 'store', 'manager', 'kitchen'] },
   departmentId: { type: mongoose.Schema.Types.ObjectId, ref: 'Department' },
   isActive: { type: Boolean, default: true }
 }, { timestamps: true });

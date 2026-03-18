@@ -3,10 +3,8 @@ const Department = require('../models/Department');
 // Get all departments
 exports.getAll = async (req, res) => {
   try {
-    // For filters and general use, return all active departments
-    // Don't filter by userId for department listings
-    const departments = await Department.find({ isActive: true }).sort({ name: 1 });
-    console.log('Departments found:', departments.length);
+    // Return all departments (both active and inactive) for management interface
+    const departments = await Department.find({}).sort({ name: 1 });
     res.json(departments);
   } catch (error) {
     console.error('Error fetching departments:', error);
@@ -17,12 +15,7 @@ exports.getAll = async (req, res) => {
 // Get single department
 exports.getOne = async (req, res) => {
   try {
-    const userId = req.user?.id || req.user?.userId;
-    if (!userId) {
-      return res.status(400).json({ error: 'User ID not found in request' });
-    }
-    
-    const department = await Department.findOne({ _id: req.params.id, userId: userId });
+    const department = await Department.findById(req.params.id);
     
     if (!department) {
       return res.status(404).json({ error: 'Department not found' });
@@ -39,17 +32,11 @@ exports.create = async (req, res) => {
   try {
     const { name, code, description, isActive } = req.body;
     
-    const userId = req.user?.id || req.user?.userId;
-    if (!userId) {
-      return res.status(400).json({ error: 'User ID not found in request' });
-    }
-    
     const department = new Department({
       name,
       code: code.toUpperCase(),
       description,
-      isActive: isActive !== undefined ? isActive : true,
-      userId: userId
+      isActive: isActive !== undefined ? isActive : true
     });
     
     await department.save();
@@ -67,18 +54,13 @@ exports.create = async (req, res) => {
 // Update department
 exports.update = async (req, res) => {
   try {
-    const userId = req.user?.id || req.user?.userId;
-    if (!userId) {
-      return res.status(400).json({ error: 'User ID not found in request' });
-    }
-    
     const updateData = { ...req.body };
     if (updateData.code) {
       updateData.code = updateData.code.toUpperCase();
     }
     
-    const department = await Department.findOneAndUpdate(
-      { _id: req.params.id, userId: userId },
+    const department = await Department.findByIdAndUpdate(
+      req.params.id,
       updateData,
       { new: true, runValidators: true }
     );
@@ -101,12 +83,7 @@ exports.update = async (req, res) => {
 // Delete department
 exports.delete = async (req, res) => {
   try {
-    const userId = req.user?.id || req.user?.userId;
-    if (!userId) {
-      return res.status(400).json({ error: 'User ID not found in request' });
-    }
-    
-    const department = await Department.findOneAndDelete({ _id: req.params.id, userId: userId });
+    const department = await Department.findByIdAndDelete(req.params.id);
     
     if (!department) {
       return res.status(404).json({ error: 'Department not found' });
@@ -121,12 +98,7 @@ exports.delete = async (req, res) => {
 // Toggle department status
 exports.toggleStatus = async (req, res) => {
   try {
-    const userId = req.user?.id || req.user?.userId;
-    if (!userId) {
-      return res.status(400).json({ error: 'User ID not found in request' });
-    }
-    
-    const department = await Department.findOne({ _id: req.params.id, userId: userId });
+    const department = await Department.findById(req.params.id);
     
     if (!department) {
       return res.status(404).json({ error: 'Department not found' });

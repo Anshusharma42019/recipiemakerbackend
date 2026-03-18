@@ -6,7 +6,6 @@ const User = require('../models/User');
 exports.register = async (req, res) => {
   try {
     const { email, password, name, role, departmentId } = req.body;
-    console.log('Register request:', { email, name, role, departmentId });
     
     const hashedPassword = await bcrypt.hash(password, 10);
     
@@ -14,24 +13,22 @@ exports.register = async (req, res) => {
       email, 
       password: hashedPassword, 
       name, 
-      role: role || 'Staff'
+      role: role || 'store'
     };
     
-    // Only add departmentId for non-admin users (Staff, Chef, and Waiter)
-    if (role !== 'Admin' && departmentId) {
+    // Only add departmentId for non-admin users
+    if (role !== 'admin' && departmentId) {
       userData.departmentId = departmentId;
     }
     
-    console.log('Creating user with data:', userData);
     const user = await User.create(userData);
-    console.log('User created successfully:', user._id);
     
     const tokenPayload = { userId: user._id, role: user.role };
     if (user.departmentId) {
       tokenPayload.departmentId = user.departmentId;
     }
     
-    const token = jwt.sign(tokenPayload, process.env.JWT_SECRET);
+    const token = jwt.sign(tokenPayload, process.env.JWT_SECRET, { expiresIn: '24h' });
     res.status(201).json({ 
       token, 
       user: { 
@@ -52,11 +49,9 @@ exports.register = async (req, res) => {
 exports.login = async (req, res) => {
   try {
     const { email, password } = req.body;
-    console.log('Login attempt for:', email);
     
     // Ensure database connection is established
     if (mongoose.connection.readyState !== 1) {
-      console.log('MongoDB not connected, attempting to connect...');
       await mongoose.connect(process.env.MONGO_URL, {
         serverSelectionTimeoutMS: 10000,
         socketTimeoutMS: 45000,
@@ -73,14 +68,12 @@ exports.login = async (req, res) => {
       return res.status(401).json({ error: 'Account is deactivated' });
     }
     
-    console.log('Login successful for user:', user._id, 'Role:', user.role, 'Department:', user.departmentId?._id);
-    
     const tokenPayload = { userId: user._id, role: user.role };
     if (user.departmentId) {
       tokenPayload.departmentId = user.departmentId._id;
     }
     
-    const token = jwt.sign(tokenPayload, process.env.JWT_SECRET);
+    const token = jwt.sign(tokenPayload, process.env.JWT_SECRET, { expiresIn: '24h' });
     res.json({ 
       token, 
       user: { 
@@ -116,41 +109,75 @@ exports.changePassword = async (req, res) => {
   res.json({ message: 'Password changed successfully' });
 };
 
+exports.createUser = async (req, res) => {
+  try {
+    const { name, email, password, role, departmentId } = req.body;
+
+    // Check if user already exists
+    const existingUser = await User.findOne({ email });
+    if (existingUser) {
+      return res.status(400).json({ error: 'User with this email already exists' });
+    }
+
+    // Hash password
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    const userData = {
+      name,
+      email,
+      password: hashedPassword,
+      role,
+      departmentId: departmentId || null
+    };
+
+    const user = new User(userData);
+    await user.save();
+    
+    const userResponse = await User.findById(user._id)
+      .populate('departmentId', 'name code')
+      .select('-password');
+    
+    res.status(201).json(userResponse);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
 exports.getAllUsers = async (req, res) => {
   try {
-    const users = await User.find({}, '-password').populate('departmentId', 'name code');
+    const users = await User.find({})
+      .populate('departmentId', 'name code')
+      .select('-password')
+      .sort({ createdAt: -1 });
     res.json(users);
   } catch (error) {
-    res.status(500).json({ error: 'Failed to fetch users' });
+    res.status(500).json({ error: error.message });
   }
 };
 
 exports.updateUser = async (req, res) => {
   try {
-    const { name, email, role, isActive, departmentId } = req.body;
-    
-    const updateData = { name, email, role, isActive };
-    
-    // Only add departmentId for non-admin users
-    if (role !== 'Admin') {
-      updateData.departmentId = departmentId || null;
-    } else {
-      // Remove departmentId for admin users
-      updateData.departmentId = null;
+    const { name, email, password, role, departmentId } = req.body;
+    const updateData = { name, email, role, departmentId: departmentId || null };
+
+    // If password is provided, hash it
+    if (password && password.trim() !== '') {
+      updateData.password = await bcrypt.hash(password, 10);
     }
-    
+
     const user = await User.findByIdAndUpdate(
       req.params.id,
       updateData,
-      { new: true, select: '-password' }
-    ).populate('departmentId', 'name code');
-    
+      { new: true }
+    ).populate('departmentId', 'name code').select('-password');
+
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }
+
     res.json(user);
   } catch (error) {
-    res.status(500).json({ error: 'Failed to update user' });
+    res.status(500).json({ error: error.message });
   }
 };
 
@@ -170,12 +197,18 @@ exports.toggleUserStatus = async (req, res) => {
 
 exports.deleteUser = async (req, res) => {
   try {
-    const user = await User.findByIdAndDelete(req.params.id);
+    const user = await User.findByIdAndUpdate(
+      req.params.id,
+      { isActive: false },
+      { new: true }
+    );
+
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }
+
     res.json({ message: 'User deleted successfully' });
   } catch (error) {
-    res.status(500).json({ error: 'Failed to delete user' });
+    res.status(500).json({ error: error.message });
   }
 };
